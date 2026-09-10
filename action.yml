@@ -1,0 +1,51 @@
+inputs:
+  elf-path:
+    description: 'Path to the built .elf file'
+    required: true
+  api-url:
+    description: 'Simantic API base URL (terraform output webhook_url, with /webhook stripped)'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Submit ELF to Simantic
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        if [ ! -f "${{ inputs.elf-path }}" ]; then
+          echo "Error: .elf file not found at ${{ inputs.elf-path }}"
+          exit 1
+        fi
+
+        if [ ! -f "simantic.yml" ]; then
+          echo "Error: simantic.yml not found in repository root"
+          exit 1
+        fi
+
+        MCU=$(python3 -c "
+import yaml, sys
+d = yaml.safe_load(open('simantic.yml'))
+if not isinstance(d, dict) or not d.get('mcu_model'):
+    print('Error: mcu_model not found in simantic.yml', file=sys.stderr)
+    sys.exit(1)
+print(d['mcu_model'])
+")
+
+        ELF_B64=$(base64 -w0 "${{ inputs.elf-path }}")
+
+        RESPONSE=$(curl -sf -w "\n%{http_code}" -X POST "${{ inputs.api-url }}/simulate" \
+          -H "Authorization: Bearer $GITHUB_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d "{\"repo_full_name\":\"$GITHUB_REPOSITORY\",\"sha\":\"$GITHUB_SHA\",\"mcu_model\":\"$MCU\",\"elf_base64\":\"$ELF_B64\",\"commit_message\":\"$GITHUB_REF_NAME\"}")
+
+        HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+        BODY=$(echo "$RESPONSE" | head -1)
+
+        if [ "$HTTP_CODE" != "200" ]; then
+          echo "Simantic API error ($HTTP_CODE): $BODY"
+          exit 1
+        fi
+
+        echo "Simulation queued: $BODY"
