@@ -12,42 +12,37 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Build simulate payload
+    - name: Submit ELF to Simantic
       shell: python3 {0}
       env:
+        GITHUB_TOKEN: ${{ github.token }}
         ELF_PATH: ${{ inputs.elf-path }}
+        API_URL: ${{ inputs.api-url }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SHA: ${{ github.sha }}
         GITHUB_REF_NAME: ${{ github.ref_name }}
       run: |
-        import base64, json, os, yaml
+        import base64, json, os, urllib.request, urllib.error, yaml
         d = yaml.safe_load(open('simantic.yml'))
-        mcu = d['mcu_model']
-        elf = open(os.environ['ELF_PATH'], 'rb').read()
-        payload = {
+        payload = json.dumps({
             'repo_full_name': os.environ['GITHUB_REPOSITORY'],
             'sha': os.environ['GITHUB_SHA'],
-            'mcu_model': mcu,
-            'elf_base64': base64.b64encode(elf).decode(),
+            'mcu_model': d['mcu_model'],
+            'elf_base64': base64.b64encode(open(os.environ['ELF_PATH'], 'rb').read()).decode(),
             'commit_message': os.environ.get('GITHUB_REF_NAME', ''),
-        }
-        open('/tmp/simulate_payload.json', 'w').write(json.dumps(payload))
-
-    - name: Submit ELF to Simantic
-      shell: bash
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-        API_URL: ${{ inputs.api-url }}
-      run: |
-        RESPONSE=$(curl -sf -w "\n%{http_code}" -X POST "$API_URL/simulate" \
-          -H "Authorization: Bearer $GITHUB_TOKE
-          -H "Content-Type: application/json" \
-          -d @/tmp/simulate_payload.json)
-
-        HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-        BODY=$(echo "$RESPONSE" | head -1)
-
-        if [ "$HTTP_CODE" != "200" ]; then
-          echo "Simantic API error ($HTTP_CODE):
-          exit 1
-        fi
+        }).encode()
+        req = urllib.request.Request(
+            os.environ['API_URL'] + '/simulate',
+            data=payload,
+            headers={
+                'Authorization': 'Bearer ' + os.environ['GITHUB_TOKEN'],
+                'Content-Type': 'application/json',
+            },
+            method='POST',
+        )
+        try:
+            with urllib.request.urlopen(req) as resp:
+                print('Simulation queued:', resp.read().decode())
+        except urllib.error.HTTPError as e:
+            print('Simantic API error', e.code, e.read().decode())
+            raise SystemExit(1)
