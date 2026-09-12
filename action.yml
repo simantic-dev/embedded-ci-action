@@ -1,9 +1,12 @@
+name: 'Simantic Simulate'
+description: 'Submit a pre-built firmware .elf to Simantic for simulation'
+
 inputs:
   elf-path:
     description: 'Path to the built .elf file'
     required: true
   api-url:
-    description: 'Simantic API base URL (terraform output webhook_url, with /webhook stripped)'
+    description: 'Simantic API base URL'
     required: true
 
 runs:
@@ -13,32 +16,28 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
+        ELF_PATH: ${{ inputs.elf-path }}
+        API_URL: ${{ inputs.api-url }}
       run: |
-        if [ ! -f "${{ inputs.elf-path }}" ]; then
-          echo "Error: .elf file not found at ${{ inputs.elf-path }}"
-          exit 1
-        fi
+        python3 - <<'PYEOF'
+        import base64, json, os, yaml
+        d = yaml.safe_load(open('simantic.yml'))
+        mcu = d['mcu_model']
+        elf = open(os.environ['ELF_PATH'], 'rb').read()
+        payload = {
+            'repo_full_name': os.environ['GITHUB_REPOSITORY'],
+            'sha': os.environ['GITHUB_SHA'],
+            'mcu_model': mcu,
+            'elf_base64': base64.b64encode(elf).decode(),
+            'commit_message': os.environ.get('GITHUB_REF_NAME', ''),
+        }
+        open('/tmp/simulate_payload.json', 'w').write(json.dumps(payload))
+        PYEOF
 
-        if [ ! -f "simantic.yml" ]; then
-          echo "Error: simantic.yml not found in repository root"
-          exit 1
-        fi
-
-        MCU=$(python3 -c "
-import yaml, sys
-d = yaml.safe_load(open('simantic.yml'))
-if not isinstance(d, dict) or not d.get('mcu_model'):
-    print('Error: mcu_model not found in simantic.yml', file=sys.stderr)
-    sys.exit(1)
-print(d['mcu_model'])
-")
-
-        ELF_B64=$(base64 -w0 "${{ inputs.elf-path }}")
-
-        RESPONSE=$(curl -sf -w "\n%{http_code}" -X POST "${{ inputs.api-url }}/simulate" \
+        RESPONSE=$(curl -sf -w "\n%{http_code}" -X POST "$API_URL/simulate" \
           -H "Authorization: Bearer $GITHUB_TOKEN" \
           -H "Content-Type: application/json" \
-          -d "{\"repo_full_name\":\"$GITHUB_REPOSITORY\",\"sha\":\"$GITHUB_SHA\",\"mcu_model\":\"$MCU\",\"elf_base64\":\"$ELF_B64\",\"commit_message\":\"$GITHUB_REF_NAME\"}")
+          -d @/tmp/simulate_payload.json)
 
         HTTP_CODE=$(echo "$RESPONSE" | tail -1)
         BODY=$(echo "$RESPONSE" | head -1)
