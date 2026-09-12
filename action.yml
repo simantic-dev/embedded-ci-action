@@ -12,14 +12,14 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Submit ELF to Simantic
-      shell: bash
+    - name: Build simulate payload
+      shell: python3 {0}
       env:
-        GITHUB_TOKEN: ${{ github.token }}
         ELF_PATH: ${{ inputs.elf-path }}
-        API_URL: ${{ inputs.api-url }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_SHA: ${{ github.sha }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
       run: |
-        python3 - <<'PYEOF'
         import base64, json, os, yaml
         d = yaml.safe_load(open('simantic.yml'))
         mcu = d['mcu_model']
@@ -32,10 +32,15 @@ runs:
             'commit_message': os.environ.get('GITHUB_REF_NAME', ''),
         }
         open('/tmp/simulate_payload.json', 'w').write(json.dumps(payload))
-        PYEOF
 
+    - name: Submit ELF to Simantic
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        API_URL: ${{ inputs.api-url }}
+      run: |
         RESPONSE=$(curl -sf -w "\n%{http_code}" -X POST "$API_URL/simulate" \
-          -H "Authorization: Bearer $GITHUB_TOKEN" \
+          -H "Authorization: Bearer $GITHUB_TOKE
           -H "Content-Type: application/json" \
           -d @/tmp/simulate_payload.json)
 
@@ -43,8 +48,6 @@ runs:
         BODY=$(echo "$RESPONSE" | head -1)
 
         if [ "$HTTP_CODE" != "200" ]; then
-          echo "Simantic API error ($HTTP_CODE): $BODY"
+          echo "Simantic API error ($HTTP_CODE):
           exit 1
         fi
-
-        echo "Simulation queued: $BODY"
