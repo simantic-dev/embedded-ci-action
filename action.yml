@@ -24,6 +24,14 @@ runs:
       run: |
         import base64, json, os, urllib.request, urllib.error, yaml
         d = yaml.safe_load(open('simantic.yml'))
+        trigger = d.get('trigger', 'push')
+        event = os.environ.get('GITHUB_EVENT_NAME', '')
+        if trigger == 'push' and event == 'pull_request':
+            print('Skipping simulation (trigger: push only)')
+            raise SystemExit(0)
+        if trigger == 'pull_request' and event == 'push':
+            print('Skipping simulation (trigger: pull_request only)')
+            raise SystemExit(0)
         payload = json.dumps({
             'repo_full_name': os.environ['GITHUB_REPOSITORY'],
             'sha': os.environ['GITHUB_SHA'],
