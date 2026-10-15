@@ -14,6 +14,9 @@ inputs:
   api-key:
     description: 'Your smtc_ API key; store it as a secret'
     required: true
+  engine:
+    description: 'Simulation engine, e.g. quartz or pyrite (default: the API version''s default engine)'
+    required: false
   simulated-seconds:
     description: 'Simulated time to run for (max 60; server default 10)'
     required: false
@@ -51,6 +54,7 @@ runs:
         ELF_PATH: ${{ inputs.elf }}
         MCU: ${{ inputs.mcu }}
         API_KEY: ${{ inputs.api-key }}
+        ENGINE: ${{ inputs.engine }}
         SIMULATED_SECONDS: ${{ inputs.simulated-seconds }}
         EXPECT: ${{ inputs.expect }}
         UART_ENCODING: ${{ inputs.uart-encoding }}

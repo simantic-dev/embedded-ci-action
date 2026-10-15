@@ -23,6 +23,8 @@ def call(method, path, body=None):
 run = {'mcu': env['MCU'],
        'firmware': {'base64': base64.b64encode(open(env['ELF_PATH'], 'rb').read()).decode()},
        'uart_encoding': env.get('UART_ENCODING') or 'ascii'}
+if env.get('ENGINE'):
+    run['engine'] = env['ENGINE']
 if env.get('SIMULATED_SECONDS'):
     run['simulated_seconds'] = float(env['SIMULATED_SECONDS'])
 run_id = call('POST', '/v1/runs', run)['id']

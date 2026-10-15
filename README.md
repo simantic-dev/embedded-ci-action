@@ -42,6 +42,7 @@ Push. The commit gets a check, and the job summary shows the UART output.
 | `elf` | yes | | Path to the built `.elf` |
 | `mcu` | yes | | MCU to simulate. `curl -H "Authorization: Bearer $KEY" https://cloud.simantic.com/v1/mcus` lists them |
 | `api-key` | yes | | Your `smtc_` key. Always pass it from a secret |
+| `engine` | | API default (quartz) | Simulation engine, e.g. `pyrite` once the API version binds it |
 | `simulated-seconds` | | `10` | Simulated time to run (max 60) |
 | `expect` | | | Python regex the UART output must match for the step to pass |
 | `uart-encoding` | | `ascii` | `ascii` or `hex` |
