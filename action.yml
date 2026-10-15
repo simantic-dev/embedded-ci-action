@@ -1,56 +1,62 @@
 name: 'Simantic Simulate'
-description: 'Submit a pre-built firmware .elf to Simantic for simulation'
+description: 'Run your firmware .elf on a simulated MCU in Simantic Cloud Sim and fail the build if it fails'
+branding:
+  icon: 'cpu'
+  color: 'blue'
 
 inputs:
-  elf-path:
-    description: 'Path to the built .elf file'
+  elf:
+    description: 'Path to the built firmware .elf'
     required: true
+  mcu:
+    description: 'MCU to simulate, e.g. STM32F401RE (list: GET https://cloud.simantic.com/v1/mcus)'
+    required: true
+  api-key:
+    description: 'Your smtc_ API key; store it as a secret'
+    required: true
+  engine:
+    description: 'Simulation engine, e.g. quartz or pyrite (default: the API version''s default engine)'
+    required: false
+  simulated-seconds:
+    description: 'Simulated time to run for (max 60; server default 10)'
+    required: false
+  expect:
+    description: 'Regex the UART output must match for the step to pass'
+    required: false
+  uart-encoding:
+    description: 'ascii or hex'
+    required: false
+    default: 'ascii'
+  output-file:
+    description: 'Where to write the UART output'
+    required: false
+    default: 'simantic-output.txt'
   api-url:
-    description: 'Simantic API base URL'
-    required: true
+    description: 'Cloud Sim API base URL'
+    required: false
+    default: 'https://cloud.simantic.com'
+
+outputs:
+  run-id:
+    description: 'Cloud Sim run id'
+    value: ${{ steps.sim.outputs.run-id }}
+  exit-code:
+    description: 'Simulator exit code (0 ok, 1 simulation failed, 2 usage error)'
+    value: ${{ steps.sim.outputs.exit-code }}
 
 runs:
   using: composite
   steps:
-    - name: Submit ELF to Simantic
-      shell: python3 {0}
+    - id: sim
+      shell: bash
+      run: python3 "$GITHUB_ACTION_PATH/simulate.py"
       env:
-        GITHUB_TOKEN: ${{ github.token }}
-        ELF_PATH: ${{ inputs.elf-path }}
+        ELF_PATH: ${{ inputs.elf }}
+        MCU: ${{ inputs.mcu }}
+        API_KEY: ${{ inputs.api-key }}
+        ENGINE: ${{ inputs.engine }}
+        SIMULATED_SECONDS: ${{ inputs.simulated-seconds }}
+        EXPECT: ${{ inputs.expect }}
+        UART_ENCODING: ${{ inputs.uart-encoding }}
+        OUTPUT_FILE: ${{ inputs.output-file }}
         API_URL: ${{ inputs.api-url }}
-        GITHUB_REPOSITORY: ${{ github.repository }}
-        GITHUB_SHA: ${{ github.sha }}
-        GITHUB_REF_NAME: ${{ github.ref_name }}
-      run: |
-        import base64, json, os, urllib.request, urllib.error, yaml
-        d = yaml.safe_load(open('simantic.yml'))
-        trigger = d.get('trigger', 'push')
-        event = os.environ.get('GITHUB_EVENT_NAME', '')
-        if trigger == 'push' and event == 'pull_request':
-            print('Skipping simulation (trigger: push only)')
-            raise SystemExit(0)
-        if trigger == 'pull_request' and event == 'push':
-            print('Skipping simulation (trigger: pull_request only)')
-            raise SystemExit(0)
-        payload = json.dumps({
-            'repo_full_name': os.environ['GITHUB_REPOSITORY'],
-            'sha': os.environ['GITHUB_SHA'],
-            'mcu_model': d['mcu_model'],
-            'elf_base64': base64.b64encode(open(os.environ['ELF_PATH'], 'rb').read()).decode(),
-            'commit_message': os.environ.get('GITHUB_REF_NAME', ''),
-        }).encode()
-        req = urllib.request.Request(
-            os.environ['API_URL'] + '/simulate',
-            data=payload,
-            headers={
-                'Authorization': 'Bearer ' + os.environ['GITHUB_TOKEN'],
-                'Content-Type': 'application/json',
-            },
-            method='POST',
-        )
-        try:
-            with urllib.request.urlopen(req) as resp:
-                print('Simulation queued:', resp.read().decode())
-        except urllib.error.HTTPError as e:
-            print('Simantic API error', e.code, e.read().decode())
-            raise SystemExit(1)
