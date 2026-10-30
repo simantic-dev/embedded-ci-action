@@ -1,0 +1,4 @@
+{
+  "mcu": "RP2040",
+  "build": { "system": "pico-sdk", "board": "pico" }
+}

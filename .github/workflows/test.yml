@@ -1,0 +1,38 @@
+name: Test
+
+on: [push, pull_request]
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -B -m unittest discover tests
+
+  # The setup step on a real runner, for each toolchain it installs. A
+  # second run of this workflow restores the toolchains from the cache.
+  setup:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        project: [stm32, rp2040]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: setup
+        uses: ./setup
+        with:
+          config: tests/fixtures/${{ matrix.project }}/simantic.json
+
+      - name: The toolchain is on PATH
+        run: |
+          arm-none-eabi-gcc --version | head -n 1
+          test "${{ steps.setup.outputs.arm-gnu }}" = 14.3.rel1
+
+      - name: The pico-sdk is found
+        if: matrix.project == 'rp2040'
+        run: |
+          test -f "$PICO_SDK_PATH/pico_sdk_init.cmake"
+          picotool version
