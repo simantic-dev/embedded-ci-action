@@ -1,0 +1,86 @@
+name: 'Simantic Toolchain Setup'
+description: 'Install the toolchains a simantic.json names (Arm GNU, the pico-sdk), cached between runs'
+
+inputs:
+  config:
+    description: 'Path to simantic.json (or the older simantic.yml); the one in the repository root when left out'
+    required: false
+    default: ''
+
+outputs:
+  mcu:
+    description: 'The MCU the config names'
+    value: ${{ steps.cfg.outputs.mcu }}
+  arm-gnu:
+    description: 'The Arm GNU Toolchain release installed, empty if none'
+    value: ${{ steps.cfg.outputs.arm_gnu }}
+  pico-sdk:
+    description: 'The pico-sdk tag installed, empty if none'
+    value: ${{ steps.cfg.outputs.pico_sdk }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read the Simantic config
+      id: cfg
+      shell: bash
+      env:
+        CONFIG: ${{ inputs.config }}
+      run: python3 "$GITHUB_ACTION_PATH/../scripts/simantic_config.py" setup
+
+    - name: Restore the Arm GNU Toolchain
+      id: arm-cache
+      if: steps.cfg.outputs.arm_gnu != ''
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.tool_cache }}/simantic/arm-gnu/${{ steps.cfg.outputs.arm_gnu }}
+        key: simantic-arm-gnu-${{ steps.cfg.outputs.arm_gnu }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Install the Arm GNU Toolchain
+      if: steps.cfg.outputs.arm_gnu != '' && steps.arm-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        VERSION: ${{ steps.cfg.outputs.arm_gnu }}
+        DEST: ${{ runner.tool_cache }}/simantic/arm-gnu/${{ steps.cfg.outputs.arm_gnu }}
+      run: bash "$GITHUB_ACTION_PATH/../scripts/install-arm-gnu.sh" "$VERSION" "$DEST"
+
+    - name: Put the Arm GNU Toolchain on PATH
+      if: steps.cfg.outputs.arm_gnu != ''
+      shell: bash
+      env:
+        DEST: ${{ runner.tool_cache }}/simantic/arm-gnu/${{ steps.cfg.outputs.arm_gnu }}
+      run: |
+        echo "$DEST/bin" >> "$GITHUB_PATH"
+        "$DEST/bin/arm-none-eabi-gcc" --version | head -n 1
+
+    - name: Restore the pico-sdk
+      id: pico-cache
+      if: steps.cfg.outputs.pico_sdk != ''
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.tool_cache }}/simantic/pico-sdk/${{ steps.cfg.outputs.pico_sdk }}
+        # picotool is built for the runner, so the key names it too.
+        key: simantic-pico-sdk-${{ steps.cfg.outputs.pico_sdk }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Install the pico-sdk
+      if: steps.cfg.outputs.pico_sdk != '' && steps.pico-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        TAG: ${{ steps.cfg.outputs.pico_sdk }}
+        DEST: ${{ runner.tool_cache }}/simantic/pico-sdk/${{ steps.cfg.outputs.pico_sdk }}
+      run: bash "$GITHUB_ACTION_PATH/../scripts/install-pico-sdk.sh" "$TAG" "$DEST"
+
+    - name: Point builds at the pico-sdk
+      if: steps.cfg.outputs.pico_sdk != ''
+      shell: bash
+      env:
+        DEST: ${{ runner.tool_cache }}/simantic/pico-sdk/${{ steps.cfg.outputs.pico_sdk }}
+      run: |
+        echo "PICO_SDK_PATH=$DEST/sdk" >> "$GITHUB_ENV"
+        if [ -d "$DEST/picotool" ]; then
+          # find_package(picotool) reads picotool_ROOT; picotool_DIR is what
+          # the reviewer's image sets, for builds that pass it on themselves.
+          echo "picotool_ROOT=$DEST/picotool" >> "$GITHUB_ENV"
+          echo "picotool_DIR=$DEST/picotool/lib/cmake/picotool" >> "$GITHUB_ENV"
+          echo "$DEST/picotool/bin" >> "$GITHUB_PATH"
+        fi
