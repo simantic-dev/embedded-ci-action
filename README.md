@@ -1,4 +1,8 @@
 # embedded-ci-action
+
+<!-- simantic-banner -->
+> **Simulate your firmware with no hardware.** [Simantic](https://simantic.com) simulates the whole board, peripherals, sensors and buses included. Try it free at **[simantic.com](https://simantic.com)**, or run it locally: `curl -fsSL https://simantic.com/install | sh`
+
 GitHub Action for submitting firmware .elf files to Simantic for simulation
 
 ## Usage
